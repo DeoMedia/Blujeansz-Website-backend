@@ -1,21 +1,67 @@
 # Blujeansz Website — Backend
 
-Database, security and storage for the [BLUJEANSZ website](https://github.com/DeoMedia/Blujeansz-Website) CMS.
+API, database, security and storage for the
+[BLUJEANSZ website](https://github.com/DeoMedia/Blujeansz-Website) CMS.
 
-There is no application server. The backend is Supabase: PostgreSQL for content,
-Supabase Auth for CMS accounts, Supabase Storage for media, and Row Level
-Security as the actual permission boundary. The React app talks to it directly
-with the anon key.
+A FastAPI service owns all database access. Supabase provides Postgres, Auth and
+Storage underneath it: Supabase Auth issues the tokens, and this service
+verifies them and maps them onto a CMS profile. The React app talks only to this
+API — it does not query Postgres directly.
+
+Row Level Security is still applied to every table as defence in depth. The API
+is the enforcement point in practice, but a leaked anon key alone still cannot
+read a draft.
 
 ## Layout
 
 ```
+app/
+  main.py         App factory, CORS, error handling, health checks
+  models.py       SQLAlchemy models mirroring the migrations
+  schemas.py      Request/response models; content blocks as a validated union
+  core/           Config, database engine, auth, slug generation
+  routers/        insights, case_studies, directory, media, dashboard
 supabase/
   migrations/     Ordered SQL migrations — the source of truth for the schema
   tests/          Local validation harness (not deployed)
 docs/
   content-blocks.md   The article content JSON format
 ```
+
+## Running locally
+
+```bash
+python -m venv .venv
+.venv/Scripts/python -m pip install -r requirements.txt   # Scripts/ -> bin/ on macOS and Linux
+cp .env.example .env                                      # then fill in
+.venv/Scripts/uvicorn app.main:app --reload
+```
+
+Interactive API docs are at `/docs` (disabled when `ENVIRONMENT=production`).
+
+Dependencies are pinned to versions that publish wheels for Python 3.13/3.14.
+Older pins of `pydantic-core`, `asyncpg` and `greenlet` have no 3.14 wheels and
+fall back to a Rust/C source build, which fails without a local toolchain.
+
+## Deploying to Railway
+
+Point a service at this repo. `Procfile` provides the start command and
+`.python-version` pins the interpreter. Set these service variables:
+
+| Variable | |
+|---|---|
+| `DATABASE_URL` | Supabase **session** pooler URI (port 5432) |
+| `SUPABASE_URL` | Project URL |
+| `SUPABASE_ANON_KEY` | Public anon key |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server-side only — required for media uploads |
+| `CORS_ORIGINS` | Comma-separated; include the production domain |
+| `ENVIRONMENT` | `production` |
+
+Use the session pooler, not the transaction pooler: asyncpg's prepared
+statements are incompatible with pgbouncer in transaction mode.
+
+`/health` is a liveness probe and does not touch the database. `/health/ready`
+does, and is the one to use for readiness.
 
 ## Applying migrations
 
