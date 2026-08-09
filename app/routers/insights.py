@@ -163,6 +163,34 @@ async def list_all_insights(
     return list((await session.execute(query)).unique().scalars().all())
 
 
+@router.get("/by-id/{insight_id}", response_model=InsightDetail)
+async def get_insight_by_id(
+    insight_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    profile: Profile = Depends(get_current_profile),
+) -> Insight:
+    """Loads a single article for editing.
+
+    The editor needs the full body, which the listing endpoints omit, and it
+    knows the row by id rather than slug — a slug lookup would break the moment
+    an editor changes the slug.
+    """
+    insight = (
+        await session.execute(select(Insight).where(Insight.id == insight_id))
+    ).unique().scalar_one_or_none()
+
+    if insight is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Article not found.")
+
+    if not _may_see_unpublished(profile) and insight.created_by != profile.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only open articles you created.",
+        )
+
+    return insight
+
+
 @router.post("", response_model=InsightDetail, status_code=status.HTTP_201_CREATED)
 async def create_insight(
     payload: InsightIn,
