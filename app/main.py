@@ -9,7 +9,15 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.core.config import get_settings
 from app.core.database import engine, session_scope
-from app.routers import case_studies, dashboard, directory, insights, media
+from app.routers import (
+    case_studies,
+    dashboard,
+    directory,
+    insights,
+    media,
+    settings as settings_router,
+    users,
+)
 
 settings = get_settings()
 logger = logging.getLogger("blujeansz")
@@ -97,7 +105,14 @@ async def readiness() -> dict[str, str]:
     return {"status": "ready"}
 
 
-for router in (insights.router, case_studies.router, directory.router, media.router):
+for router in (
+    insights.router,
+    case_studies.router,
+    directory.router,
+    media.router,
+    users.router,
+    settings_router.router,
+):
     app.include_router(router, prefix=settings.api_prefix)
 
 app.include_router(dashboard.router, prefix=settings.api_prefix)

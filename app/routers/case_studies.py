@@ -98,6 +98,24 @@ async def list_all_case_studies(
     return list((await session.execute(query)).unique().scalars().all())
 
 
+@router.get("/by-id/{case_study_id}", response_model=CaseStudyDetail)
+async def get_case_study_by_id(
+    case_study_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    profile: Profile = Depends(require_role("editor")),
+) -> CaseStudy:
+    """Loads a case study for editing — by id, so changing the slug mid-edit
+    does not break the page it is being edited on."""
+    case_study = (
+        await session.execute(select(CaseStudy).where(CaseStudy.id == case_study_id))
+    ).unique().scalar_one_or_none()
+
+    if case_study is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Case study not found.")
+
+    return case_study
+
+
 @router.post("", response_model=CaseStudyDetail, status_code=status.HTTP_201_CREATED)
 async def create_case_study(
     payload: CaseStudyIn,
