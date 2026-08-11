@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -40,6 +40,17 @@ class Settings(BaseSettings):
     api_prefix: str = "/api"
     cors_origins: str = "http://localhost:5173"
 
+    # --- Local development auth ---------------------------------------------
+    # Supabase Auth is a hosted service, so there is no identity provider when
+    # working against a plain local Postgres. Enabling this adds a second login
+    # path that mints its own tokens — strictly for local development.
+    #
+    # It is refused outright when ENVIRONMENT is production (see the validator
+    # below), so it cannot be switched on in a deployed environment even by
+    # setting the variable.
+    local_auth_enabled: bool = False
+    local_auth_secret: str = "local-development-only-not-a-production-secret"
+
     @field_validator("database_url")
     @classmethod
     def _require_async_driver(cls, value: str) -> str:
@@ -56,6 +67,22 @@ class Settings(BaseSettings):
         if value.startswith("postgresql://"):
             return value.replace("postgresql://", "postgresql+asyncpg://", 1)
         raise ValueError("database_url must be a postgres connection URI")
+
+    @model_validator(mode="after")
+    def _refuse_local_auth_in_production(self) -> "Settings":
+        """Hard stop rather than a warning.
+
+        A deployment that somehow carried LOCAL_AUTH_ENABLED=true would accept
+        self-minted tokens and bypass Supabase entirely. Refusing to start is
+        the only safe response — a running-but-insecure API is worse than one
+        that fails loudly on boot.
+        """
+        if self.local_auth_enabled and self.is_production:
+            raise ValueError(
+                "LOCAL_AUTH_ENABLED cannot be used with ENVIRONMENT=production. "
+                "It exists only for local development against a bare Postgres."
+            )
+        return self
 
     @property
     def allowed_origins(self) -> list[str]:

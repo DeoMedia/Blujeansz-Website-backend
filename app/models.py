@@ -18,12 +18,34 @@ from sqlalchemy import (
     Text,
     func,
 )
+from sqlalchemy.dialects.postgresql import ENUM as PGEnum
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 class Base(DeclarativeBase):
     pass
+
+
+# These columns are Postgres enums, not text. Mapping them as String makes
+# SQLAlchemy send a varchar parameter, and Postgres has no
+# `content_status = character varying` operator — so every status filter fails
+# at runtime. create_type=False because the migrations already define them.
+def user_role_type() -> PGEnum:
+    return PGEnum(
+        "super_admin", "admin", "editor", "author", name="user_role", create_type=False
+    )
+
+
+def user_status_type() -> PGEnum:
+    return PGEnum("active", "invited", "suspended", name="user_status", create_type=False)
+
+
+def content_status_type() -> PGEnum:
+    return PGEnum(
+        "draft", "in_review", "scheduled", "published", "archived",
+        name="content_status", create_type=False,
+    )
 
 
 class TimestampMixin:
@@ -44,8 +66,8 @@ class Profile(Base, TimestampMixin):
     last_name: Mapped[str | None] = mapped_column(Text)
     email: Mapped[str] = mapped_column(Text, nullable=False)
     avatar_url: Mapped[str | None] = mapped_column(Text)
-    role: Mapped[str] = mapped_column(String, nullable=False)
-    status: Mapped[str] = mapped_column(String, nullable=False)
+    role: Mapped[str] = mapped_column(user_role_type(), nullable=False)
+    status: Mapped[str] = mapped_column(user_status_type(), nullable=False)
     can_publish: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -125,7 +147,7 @@ class Insight(Base, TimestampMixin):
     featured_image_alt: Mapped[str | None] = mapped_column(Text)
     hero_image_position: Mapped[str] = mapped_column(Text, nullable=False, default="center")
     read_time_minutes: Mapped[int | None] = mapped_column(Integer)
-    status: Mapped[str] = mapped_column(String, nullable=False, default="draft")
+    status: Mapped[str] = mapped_column(content_status_type(), nullable=False, default="draft")
     featured: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     seo_title: Mapped[str | None] = mapped_column(Text)
@@ -170,7 +192,7 @@ class CaseStudy(Base, TimestampMixin):
 
     client_quote: Mapped[str | None] = mapped_column(Text)
     quote_attribution: Mapped[str | None] = mapped_column(Text)
-    status: Mapped[str] = mapped_column(String, nullable=False, default="draft")
+    status: Mapped[str] = mapped_column(content_status_type(), nullable=False, default="draft")
     featured: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     seo_title: Mapped[str | None] = mapped_column(Text)

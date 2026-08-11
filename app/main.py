@@ -116,3 +116,15 @@ for router in (
     app.include_router(router, prefix=settings.api_prefix)
 
 app.include_router(dashboard.router, prefix=settings.api_prefix)
+
+# Development-only login, for running against a bare local Postgres with no
+# Supabase Auth. Settings refuse to construct when this is combined with
+# ENVIRONMENT=production, so it cannot be mounted in a deployed environment.
+if settings.local_auth_enabled:
+    from app.routers import local_auth
+
+    logger.warning(
+        "LOCAL_AUTH_ENABLED is on: /auth/local/login is mounted and self-signed "
+        "tokens are accepted. Development only."
+    )
+    app.include_router(local_auth.router, prefix=settings.api_prefix)

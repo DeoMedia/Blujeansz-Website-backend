@@ -90,6 +90,28 @@ async def decode_token(token: str) -> dict[str, Any]:
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Malformed token."
         ) from exc
 
+    # Local development tokens are HS256 and carry no key id. Supabase always
+    # signs asymmetrically with a kid, so the two can never be confused, and
+    # this branch is unreachable unless local auth is explicitly enabled —
+    # which settings refuse to allow in production.
+    if settings.local_auth_enabled and header.get("alg") == "HS256":
+        try:
+            return jwt.decode(
+                token,
+                key=settings.local_auth_secret,
+                algorithms=["HS256"],
+                audience=settings.supabase_jwt_audience,
+                options={"require": ["exp", "sub"]},
+            )
+        except jwt.ExpiredSignatureError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="Session has expired."
+            ) from exc
+        except jwt.PyJWTError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token."
+            ) from exc
+
     kid = header.get("kid")
     if not kid:
         raise HTTPException(
